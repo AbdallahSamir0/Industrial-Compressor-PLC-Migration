@@ -1,0 +1,277 @@
+﻿FUNCTION "Fault_Evaluation" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	//---------------------------------TRIP PART-----------------------------------------------------------------------------------------
+	//----------------------(1)-----------------------------------
+	// Hardware Faults
+	//1.EMS
+	IF NOT "IO Mapping".INPUTS.EMS THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	//2.SS FB Fault
+	IF NOT "IO Mapping".INPUTS."SS FB (FAULT)" AND
+	    NOT "Control".System_Status.Stop_In_Progress THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//3.Oil Pump Fault
+	IF NOT "IO Mapping".INPUTS."OIL PUMP (FAULT)" AND
+	    NOT "Control".System_Status.Stop_In_Progress THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(2)-----------------------------------
+	//Vibration
+	IF "Engineering_Values"."VIBRATION REAL" >= 18.0 THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(3)-----------------------------------
+	//Main Current
+	IF "Engineering_Values"."MAIN CURRENT REAL" >= 900.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(4)-----------------------------------
+	//Motor Feedback Loss
+	
+	IF "Control".System_Status.System_Running AND
+	    NOT "Control".System_Status.Stop_In_Progress AND
+	    NOT "IO Mapping".INPUTS."SS FB (RUNNING)" THEN
+	    
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(5)-----------------------------------
+	//Oil Heat
+	IF "Engineering_Values"."OIL TEMP INTANK REAL" > 68 THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(6)-----------------------------------
+	//Oil Pressure
+	IF "Control".System_Status.System_Running AND
+	    NOT "Control".System_Status.Stop_In_Progress AND
+	    ("Engineering_Values"."GB OIL PRESSURE REAL" < 1.0) THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(7)-----------------------------------
+	//Motor Winding Overheat
+	// U
+	IF "Engineering_Values"."MTR U TEMP REAL" >= 145.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	// V    
+	IF "Engineering_Values"."MTR V TEMP REAL" >= 145.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	// W    
+	IF "Engineering_Values"."MTR W TEMP REAL" >= 145.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(8)-----------------------------------
+	//MTR BRG DE & NDE Temps Overheat
+	//DE
+	IF "Engineering_Values"."MTR_BRG_DE REAL" >= 95.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//NDE
+	IF "Engineering_Values"."MTR_BRG_NDE REAL" >= 95.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	    
+	END_IF;
+	
+	//----------------------(9)-----------------------------------
+	//High Speed & Low Speed
+	//HSFB
+	IF "Engineering_Values"."HSFB TEMP REAL" >= 100.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//HSRB
+	IF "Engineering_Values"."HSRB TEMP REAL" >= 100.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//LSFB
+	IF "Engineering_Values"."LSFB TEMP REAL" >= 95.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//LSRB
+	IF "Engineering_Values"."LSRB TEMP REAL" >= 95.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(10)-----------------------------------
+	//Discharge Air Pressure
+	IF "Engineering_Values"."DISH AIR PRESSURE REAL" >= 1.713 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(11)-----------------------------------
+	//Surge
+	IF "Control".System_Status.System_Running AND
+	    NOT "Control".System_Status.Stop_In_Progress AND
+	    ("Engineering_Values"."DP IN-OUT REAL" < 0.05) THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//Surge Hadrware Sensor
+	IF NOT "IO Mapping".INPUTS.SURGING THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//----------------------(12)-----------------------------------
+	//Inlet Air Temp
+	IF "Engineering_Values"."AIR TEMP INLET REAL" >= 40.0 THEN
+	    "Control".Faults.GLOBAL_ALARM_TRIP := TRUE;
+	END_IF;
+	
+	//---------------------------------ALARM PART-----------------------------------------------------------------------------------------
+	//----------------------(1)-----------------------------------
+	//Vibration
+	IF "Engineering_Values"."VIBRATION REAL" >= 12.0 THEN
+	    "Control".Run_Faults.Vibration_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."VIBRATION REAL" <= 11.5 THEN
+	    "Control".Run_Faults.Vibration_AL := FALSE;
+	END_IF;
+	
+	//----------------------(2)-----------------------------------
+	//Main Current
+	IF "Engineering_Values"."MAIN CURRENT REAL" >= 670.0 THEN
+	    "Control".Run_Faults.Current_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MAIN CURRENT REAL" <= 665.0 THEN
+	    "Control".Run_Faults.Current_AL := FALSE;
+	END_IF;
+	
+	//----------------------(3)-----------------------------------
+	//oil pressure alarm
+	IF "Engineering_Values"."GB OIL PRESSURE REAL" <= 1.2 THEN
+	    "Control".Run_Faults.GB_OIL_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."GB OIL PRESSURE REAL" >= 1.25 THEN
+	    "Control".Run_Faults.GB_OIL_AL := FALSE;
+	END_IF;
+	
+	//----------------------(4)-----------------------------------
+	//Motor Winding Overheat
+	IF "Engineering_Values"."MTR U TEMP REAL" >= 120.0 THEN
+	    "Control".Run_Faults.MTR_U_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MTR U TEMP REAL" <= 115.0 THEN
+	    "Control".Run_Faults.MTR_U_AL := FALSE;
+	END_IF;
+	
+	// V    
+	IF "Engineering_Values"."MTR V TEMP REAL" >= 120.0 THEN
+	    "Control".Run_Faults.MTR_V_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MTR V TEMP REAL" <= 115.0 THEN
+	    "Control".Run_Faults.MTR_V_AL := FALSE;
+	END_IF;
+	
+	// W    
+	IF "Engineering_Values"."MTR W TEMP REAL" >= 120.0 THEN
+	    "Control".Run_Faults.MTR_W_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MTR W TEMP REAL" <= 115.0 THEN
+	    "Control".Run_Faults.MTR_W_AL := FALSE;
+	END_IF;
+	//----------------------(5)-----------------------------------
+	//MTR BRG DE & NDE Temps Overheat
+	//DE
+	IF "Engineering_Values"."MTR_BRG_DE REAL" >= 85.0 THEN
+	    "Control".Run_Faults.MTR_BRG_DE_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MTR_BRG_DE REAL" <= 82.0 THEN
+	    "Control".Run_Faults.MTR_BRG_DE_AL := FALSE;
+	END_IF;
+	
+	//NDE    
+	IF "Engineering_Values"."MTR_BRG_NDE REAL" >= 85.0 THEN
+	    "Control".Run_Faults.MTR_BRG_NDE_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."MTR_BRG_NDE REAL" <= 82.0 THEN
+	    "Control".Run_Faults.MTR_BRG_NDE_AL := FALSE;
+	END_IF;
+	
+	//----------------------(6)-----------------------------------
+	//High Speed & Low Speed
+	//HSFB
+	IF "Engineering_Values"."HSFB TEMP REAL" >= 90.0 THEN
+	    "Control".Run_Faults.HSFB_TEMP_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."HSFB TEMP REAL" <= 87.0 THEN
+	    "Control".Run_Faults.HSFB_TEMP_AL := FALSE;
+	END_IF;
+	
+	//HSRB
+	IF "Engineering_Values"."HSRB TEMP REAL" >= 90.0 THEN
+	    "Control".Run_Faults.HSRB_TEMP_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."HSRB TEMP REAL" <= 87.0 THEN
+	    "Control".Run_Faults.HSRB_TEMP_AL := FALSE;
+	END_IF;
+	
+	//LSFB    
+	IF "Engineering_Values"."LSFB TEMP REAL" >= 85.0 THEN
+	    "Control".Run_Faults.LSFB_TEMP_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."LSFB TEMP REAL" <= 82.0 THEN
+	    "Control".Run_Faults.LSFB_TEMP_AL := FALSE;
+	END_IF;
+	
+	//LSRB
+	IF "Engineering_Values"."LSRB TEMP REAL" >= 85.0 THEN
+	    "Control".Run_Faults.LSRB_TEMP_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."LSRB TEMP REAL" <= 82.0 THEN
+	    "Control".Run_Faults.LSRB_TEMP_AL := FALSE;
+	END_IF;
+	
+	//----------------------(7)-----------------------------------
+	//Discharge Air Pressure
+	IF "Engineering_Values"."DISH AIR PRESSURE REAL" >= 1.65 THEN
+	    "Control".Run_Faults.Dis_Pressure_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."DISH AIR PRESSURE REAL" <= 1.63 THEN
+	    "Control".Run_Faults.Dis_Pressure_AL := FALSE;
+	END_IF;
+	
+	//----------------------(8)-----------------------------------
+	//Surge Alarm
+	IF "Engineering_Values"."DP IN-OUT REAL" < 0.1 THEN
+	    "Control".Run_Faults.Surge_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."DP IN-OUT REAL" >= 0.12 THEN
+	    "Control".Run_Faults.Surge_AL := FALSE;
+	END_IF;
+	
+	//----------------------(9)-----------------------------------
+	//Inlet filter
+	IF "IO Mapping".INPUTS."DP SWITCH" THEN
+	    "Control".Run_Faults.Filter_Blocked_AL := TRUE;
+	ELSE
+	    "Control".Run_Faults.Filter_Blocked_AL := FALSE;
+	END_IF;
+	
+	//----------------------(10)-----------------------------------
+	//Inlet Air Temp
+	IF "Engineering_Values"."AIR TEMP INLET REAL" >= 35.0 THEN
+	    "Control".Run_Faults.Air_temp_AL := TRUE;
+	ELSIF
+	    "Engineering_Values"."AIR TEMP INLET REAL" <= 33.0 THEN
+	    "Control".Run_Faults.Air_temp_AL := FALSE;
+	END_IF;
+END_FUNCTION
+

@@ -1,0 +1,51 @@
+﻿ORGANIZATION_BLOCK "Flow_Chart_RUN"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	IF "Control".System_Status.System_Running THEN
+	    IF ABS(IN := "Control".Run_Control.Pressure_Error) > 0.03 THEN //Dead band, ABS to calculate once and prevent oscillation
+	        
+	        IF "Control".Run_Control.Pressure_Error > 0.0 THEN
+	            //"Error is "+",increse current discharge air pressure, open IGV, Close VVD
+	            
+	            IF NOT "IO Mapping".INPUTS.IGV_OPENED THEN
+	                "IO Mapping".OUTPUTS."IGV OPEN CTRL" := TRUE;
+	                "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	            END_IF;
+	            IF NOT "IO Mapping".INPUTS."OGV CLOSED" THEN
+	                "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	                "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := TRUE;
+	            END_IF;
+	            
+	        ELSIF "Control".Run_Control.Pressure_Error < 0.0 THEN
+	            //Error is "-",decrease current dish pressure, Close IGV, open VVD
+	           
+	            IF NOT "IO Mapping".INPUTS."IGV CLOSED" THEN
+	                "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	                "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := TRUE;
+	            END_IF;
+	            IF NOT "IO Mapping".INPUTS."OGV OPENED" THEN
+	                "IO Mapping".OUTPUTS."VVD OPEN CTRL" := TRUE;
+	                "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	            END_IF;
+	            
+	        END_IF; //END IF error equals ZERO After Deadband
+	        
+	    ELSE //Shut down all outputs when inside the deadband
+	        "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	        "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	        "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	        "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	        
+	    END_IF; //END IF it's the deadband
+	    
+	ELSE //Shut down all outputs when Sys. not running
+	    "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	    
+	END_IF; //ENd IF Sys. not running
+END_ORGANIZATION_BLOCK
+

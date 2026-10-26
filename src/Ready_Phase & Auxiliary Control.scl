@@ -1,0 +1,146 @@
+﻿FUNCTION "Ready_Phase & Auxiliary Control" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_TEMP 
+      Group_Safety : Bool;
+      Group_Oil : Bool;
+      Group_Temps : Bool;
+      Group_Air : Bool;
+      General_Faults : Bool;
+      Start_Permissive : Bool;
+      Safe_TO_GO : Bool;
+   END_VAR
+
+
+BEGIN
+	//Auxiliary Control Part (Without Conditions)
+	//Lights
+	"IO Mapping".OUTPUTS."RDY LIGHT" := "Control".System_Status.System_Ready;
+	"IO Mapping".OUTPUTS."RUN LIGHT" := "Control".System_Status.System_Running;
+	//Continous Oil Temp Scan
+	//OilHeater
+	IF "Engineering_Values"."OIL TEMP INTANK REAL" < 22.0 THEN
+	    "IO Mapping".OUTPUTS."OIL HEATER CTRL" := TRUE;
+	ELSIF "Engineering_Values"."OIL TEMP INTANK REAL" > 30.0 THEN
+	    "IO Mapping".OUTPUTS."OIL HEATER CTRL" := FALSE;
+	END_IF;
+	
+	//Cooling Fan
+	IF "Engineering_Values"."OIL TEMP INTANK REAL" >= 50.0 THEN
+	    "IO Mapping".OUTPUTS."COOLING FAN CTRL" := TRUE;
+	ELSIF
+	    "Engineering_Values"."OIL TEMP INTANK REAL" <= 40.0 THEN
+	    "IO Mapping".OUTPUTS."COOLING FAN CTRL" := FALSE;
+	END_IF;
+	//-------------------------------------------------------------------------
+	//Reset Command Evaluation
+	IF "Control".CMD.Reset_Pulse THEN
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := FALSE;
+	    "Control".Faults.GLOBAL_ALARM_TRIP := FALSE;
+	    "Control".Faults.Sequence_Trip := FALSE;
+	    "Control".Faults.Trip_Code := 000;
+	    "Control".System_Status.System_Ready := FALSE;
+	    "Control".System_Status.System_Starting := FALSE;
+	    "Control".System_Status.System_Running := FALSE;
+	    "Control".System_Status.Stop_In_Progress := FALSE;
+	    "Control".System_Status.EMG_Stopping := FALSE;
+	    "Control".System_Status.Alarm_Stopping := FALSE;
+	    "Control".Sequence.Start_Step := 0;
+	    
+	    //initialize Seq. Timers
+	    "Vanes_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "Oil_Pump_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "Pre_Lube_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "Start_Motor_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "BOV_Close_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "Switch_Oil_Pumps_SEQ".TON(IN := FALSE, PT := T#0s);
+	    "SEQ_Success".TON(IN := FALSE, PT := T#0s);
+	    //for testing
+	    "Post_lube_Timer".TON(IN := FALSE,PT := T#0s);
+	END_IF;
+	//-------------------------------------------------------------------------
+	//Ready Phase Part (Make Sure Its Ready)
+	// Group 1: safety & Faults (Hardware)
+	
+	#Group_Safety :=  //0=SAFE
+	NOT "IO Mapping".INPUTS.EMS                     OR
+	NOT "IO Mapping".INPUTS."SS FB (FAULT)"         OR
+	NOT "IO Mapping".INPUTS."OIL PUMP (FAULT)"      OR
+	NOT "IO Mapping".INPUTS.SURGING                 OR
+	NOT "IO Mapping".INPUTS."BOV (FAULT)"           OR
+	NOT "IO Mapping".INPUTS."OIV (FAULT)"           OR
+	NOT "IO Mapping".INPUTS."OIL HEATER (FAULT)"    OR
+	NOT "IO Mapping".INPUTS."COOLING FAN (FAULT)"   OR
+	NOT "IO Mapping".INPUTS."ENCLOSURE FAN (FAULT)";
+	
+	// Group 2: oil system
+	#Group_Oil :=//1=SAFE
+	            ("Engineering_Values"."OIL TEMP INTANK REAL" >= 25.0);
+	
+	//Group 3: Motor & Bearing Temps
+	#Group_Temps := //1=SAFE
+	("Engineering_Values"."MTR U TEMP REAL" < 120.0) AND
+	("Engineering_Values"."MTR V TEMP REAL" < 120.0) AND
+	("Engineering_Values"."MTR W TEMP REAL" < 120.0) AND
+	("Engineering_Values"."MTR_BRG_DE REAL" < 85.0)  AND
+	("Engineering_Values"."MTR_BRG_NDE REAL"< 85.0)  AND
+	("Engineering_Values"."LSFB TEMP REAL" < 85.0)   AND
+	("Engineering_Values"."LSRB TEMP REAL" < 85.0)   AND
+	("Engineering_Values"."HSFB TEMP REAL" < 90.0)   AND
+	("Engineering_Values"."HSRB TEMP REAL" < 90.0);
+	
+	//Group 4: Air & Vibration
+	
+	#Group_Air := //1=SAFE
+	("Engineering_Values"."AIR TEMP INLET REAL" < 40.0) AND
+	("Engineering_Values"."VIBRATION REAL" < 12.0);
+	
+	//--------------general Faults (always monitored)------------------------
+	#General_Faults :=  //1=FAULT 
+	#Group_Safety OR
+	NOT #Group_Oil OR
+	NOT #Group_Temps OR
+	NOT #Group_Air;
+	
+	//-------------start Warning (valves & pressure)-----------------------
+	#Start_Permissive := //1=SAFE
+	"IO Mapping".INPUTS."BOV (OPENED)" AND
+	"IO Mapping".INPUTS."OIV (CLOSED)" AND
+	"IO Mapping".INPUTS."IGV CLOSED" AND
+	"IO Mapping".INPUTS."OGV CLOSED" AND
+	("Engineering_Values"."IGV ANGLE REAL" < 5.0) AND
+	("Engineering_Values"."VVD ANGLE REAL" < 5.0) AND
+	("Engineering_Values"."DISH AIR PRESSURE REAL" < 0.2);
+	//  ---------------------------------------------------------------------------------------------
+	#Safe_TO_GO :=
+	NOT #General_Faults AND
+	#Start_Permissive AND
+	NOT "Control".System_Status.System_Running AND
+	NOT "Control".System_Status.Stop_In_Progress AND
+	NOT "Control".Faults.GLOBAL_EMERGENCY_TRIP AND
+	NOT "Control".Faults.GLOBAL_ALARM_TRIP;
+	               
+	//LATCHING STATUS
+	IF
+	"Control".CMD.Stop_Pulse OR
+	NOT #Safe_TO_GO THEN
+	
+	    "Control".System_Status.System_Ready := FALSE;
+	    
+	ELSIF
+	"Control".CMD.Ready_Pulse AND
+	#Safe_TO_GO THEN
+	    
+	"Control".System_Status.System_Ready := TRUE;
+	END_IF;
+	
+	
+	//HMI INT
+	"HMI_Interface".Ready_Trips.%X0 := NOT #Group_Safety;
+	"HMI_Interface".Ready_Trips.%X1 := #Group_Oil;
+	"HMI_Interface".Ready_Trips.%X2 := #Group_Temps;
+	"HMI_Interface".Ready_Trips.%X3 := #Group_Air;
+	"HMI_Interface".Ready_Trips.%X4 := #General_Faults;
+	"HMI_Interface".Ready_Trips.%X5 := #Start_Permissive;
+END_FUNCTION
+

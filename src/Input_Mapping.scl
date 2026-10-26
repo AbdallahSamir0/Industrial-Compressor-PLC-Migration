@@ -1,0 +1,65 @@
+﻿FUNCTION "Input_Mapping" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	//DIGITAL INPUTS MAPPING:
+	"IO Mapping".INPUTS.IGV_OPENED := "IGV_OPENED";
+	"IO Mapping".INPUTS."IGV CLOSED" := "IGV CLOSED";
+	"IO Mapping".INPUTS."OGV OPENED" := "OGV OPENED";
+	"IO Mapping".INPUTS."OGV CLOSED" := "OGV CLOSED";
+	"IO Mapping".INPUTS."DP SWITCH" := "DP SWITCH";
+	"IO Mapping".INPUTS."BOV (OPENED)" := "BOV (OPENED)";
+	"IO Mapping".INPUTS."BOV (CLOSED)" := "BOV (CLOSED)";
+	"IO Mapping".INPUTS."OIV (OPENED)" := "OIV (OPENED)";
+	"IO Mapping".INPUTS."OIV (CLOSED)" := "OIV (CLOSED)";
+	"IO Mapping".INPUTS."OIV (TORQUE)" := "OIV (TORQUE)";
+	"IO Mapping".INPUTS."SS FB (RUNNING)" := "SS FB (RUNNING)";
+	"IO Mapping".INPUTS."SS FB (BYPASS)" := "SS FB (BYPASS)";
+	"IO Mapping".INPUTS."OIL PUMP (RUNNING)" := "OIL PUMP (RUNNING)";
+	"IO Mapping".INPUTS."OIL HEATER (RUNNING)" := "OIL HEATER (RUNNING)";
+	"IO Mapping".INPUTS."COOLING FAN (RUN)" := "COOLING FAN (RUN)";
+	"IO Mapping".INPUTS."ENCLOSURE FAN (RUN)" := "ENCLOSURE FAN (RUN)";
+	"IO Mapping".INPUTS."RDY PB" := "RDY PB";
+	"IO Mapping".INPUTS."RUN PB" := "RUN PB";
+	"IO Mapping".INPUTS."L\R SWITCH" := "L\R SWITCH";
+	
+	//NC SIGNALS (In case u want to change)
+	"IO Mapping".INPUTS.EMS := "EMS";
+	"IO Mapping".INPUTS."SS FB (FAULT)" := "SS FB (FAULT)";
+	"IO Mapping".INPUTS.SURGING := "SURGING";
+	"IO Mapping".INPUTS."BOV (FAULT)" := "BOV (FAULT)";
+	"IO Mapping".INPUTS."OIV (FAULT)" := "OIV (FAULT)";
+	"IO Mapping".INPUTS."OIL HEATER (FAULT)" := "OIL HEATER (FAULT)";
+	"IO Mapping".INPUTS."OIL PUMP (FAULT)" := "OIL PUMP (FAULT)";
+	"IO Mapping".INPUTS."COOLING FAN (FAULT)" := "COOLING FAN (FAULT)";
+	"IO Mapping".INPUTS."ENCLOSURE FAN (FAULT)" := "ENCLOSURE FAN (FAULT)";
+	"IO Mapping".INPUTS."STOP PB" := "STOP PB";
+	
+	// ANALOG INPUTS:
+	// 
+	"IO Mapping".AIs."IGV Angle FeedBack" := "IGV Angle FeedBack";
+	"IO Mapping".AIs."VVD Angle FeedBack" := "VVD Angle FeedBack";
+	"IO Mapping".AIs.Vibration := "Vibration";
+	"IO Mapping".AIs."Main Current" := "Main Current";
+	"IO Mapping".AIs."GB Oil Pressure" := "GB Oil Pressure";
+	"IO Mapping".AIs."GB OIL TEMP" := "GB OIL TEMP";
+	"IO Mapping".AIs."Dish Air Pressure" := "Dish Air Pressure";
+	"IO Mapping".AIs."Dish Air Pressure In-Outlet" := "Dish Air Pressure In-Outlet";
+	
+	// TEMP INPUTS:
+	// 
+	"IO Mapping"."TEMP Signals"."Air Temp Inlet" := "Air Temp Inlet";
+	"IO Mapping"."TEMP Signals"."Oil Temp Intank" := "Oil Temp Intank";
+	"IO Mapping"."TEMP Signals".MTR_BRG_DE_TEMP := "MTR_BRG_DE_TEMP";
+	"IO Mapping"."TEMP Signals".MTR_BRG_NDE_TEMP := "MTR_BRG_NDE_TEMP";
+	"IO Mapping"."TEMP Signals".HSFB_TEMP := "HSFB_TEMP";
+	"IO Mapping"."TEMP Signals".HSRB_TEMP := "HSRB_TEMP";
+	"IO Mapping"."TEMP Signals".LSFB_TEMP := "LSFB_TEMP";
+	"IO Mapping"."TEMP Signals".LSRB_TEMP := "LSRB_TEMP";
+	"IO Mapping"."TEMP Signals"."MTR WND U TEMP" := "MTR WND U TEMP";
+	"IO Mapping"."TEMP Signals"."MTR WND V TEMP" := "MTR WND V TEMP";
+	"IO Mapping"."TEMP Signals"."MTR WND W TEMP" := "MTR WND W TEMP";
+	
+END_FUNCTION
+

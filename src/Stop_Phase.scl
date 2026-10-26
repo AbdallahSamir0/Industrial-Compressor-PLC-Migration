@@ -1,0 +1,191 @@
+﻿FUNCTION "Stop_Phase" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	//Standby mode
+	IF NOT "Control".System_Status.System_Running AND
+	    NOT "Control".System_Status.Stop_In_Progress AND
+	    NOT "Control".System_Status.System_Starting AND
+	    NOT "Control".Faults.GLOBAL_EMERGENCY_TRIP AND
+	    NOT "Control".Faults.GLOBAL_ALARM_TRIP THEN
+	    
+	    "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."BOV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."OIV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."OIV CLOSE CTRL" := FALSE;
+	END_IF;
+	
+	//Stop Pulse
+	IF "Control".CMD.Stop_Pulse AND
+	    NOT "Control".System_Status.Stop_In_Progress AND
+	    NOT "Control".System_Status.EMG_Stopping AND
+	    NOT "Control".System_Status.Alarm_Stopping  THEN
+	    
+	    "Control".System_Status.System_Ready := FALSE;
+	    "Control".System_Status.System_Starting := FALSE;
+	    "Control".System_Status.System_Running := FALSE;
+	    
+	    "Control".Sequence.Start_Step := 0;
+	    "Control".Sequence.Stop_Step := 0;
+	    
+	    "Control".System_Status.Stop_In_Progress := TRUE;
+	END_IF;
+	
+	//TIMERS CONTROL
+	// -----------------------------------------------------------------------
+	
+	// Post-Lube Timer starts ONLY when Main Motor is STOPPED during Trip
+	"Post_lube_Timer".TON(IN :=("Control".System_Status.EMG_Stopping OR
+	                      "Control".System_Status.Alarm_Stopping OR
+	                      "Control".System_Status.Stop_In_Progress),
+	                      PT := T#60s); //variable in Control DB = 5M
+	
+	// Alarm Stop Delay Timer
+	"Alarm_Stop_Delay_Timer".TON(IN := "Control".System_Status.Alarm_Stopping,
+	                            PT := T#3s); ///variable in Control DB = 3s
+	
+	// Vane Timeout Timer (Active only during Step 0 of Normal Stop)
+	"Vane_Stop_Timer".TON(IN := "Control".System_Status.Stop_In_Progress AND
+	                      ("Control".Sequence.Stop_Step = 0),
+	                      PT := T#15s);
+	
+	//STOP SEQUENCE
+	// -----------------------------------------------------------------------
+	// 1. Emergency Stop
+	IF "Control".Faults.GLOBAL_EMERGENCY_TRIP THEN
+	    
+	    "Control".System_Status.EMG_Stopping := TRUE;
+	    //first, Manage Post lube
+	    "IO Mapping".OUTPUTS."OIL PUMP CTRL" := TRUE;
+	    
+	    IF "Post_lube_Timer".Q THEN
+	        
+	        "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	        "Control".System_Status.EMG_Stopping := FALSE;
+	    END_IF;
+	    //Rest Of Commands
+	    "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."BOV OPEN CTRL" := TRUE;
+	    "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := TRUE;
+	    "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := TRUE;
+	    
+	    "Control".Sequence.Stop_Step := 0;
+	    
+	    // 2. Alarm Stop
+	    
+	ELSIF "Control".Faults.GLOBAL_ALARM_TRIP THEN
+	    
+	    "Control".System_Status.Alarm_Stopping := TRUE;
+	    //first, Manage Post lube
+	    "IO Mapping".OUTPUTS."OIL PUMP CTRL" := TRUE;
+	    
+	    IF "Post_lube_Timer".Q THEN
+	        
+	        "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	        "Control".System_Status.Alarm_Stopping := FALSE;
+	    END_IF;
+	    
+	    //Rest of Commands
+	    "IO Mapping".OUTPUTS."BOV OPEN CTRL" := TRUE;
+	    "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := TRUE;
+	    "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := TRUE;
+	    
+	    IF "Alarm_Stop_Delay_Timer".Q THEN
+	        "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	    END_IF;
+	    "Control".Sequence.Stop_Step := 0;
+	    
+	    // 3. Normal Stop
+	ELSIF "Control".System_Status.Stop_In_Progress THEN
+	    
+	    //first, Manage Post lube
+	    "IO Mapping".OUTPUTS."OIL PUMP CTRL" := TRUE;
+	    
+	    //Normal Stop Sequence
+	    CASE "Control".Sequence.Stop_Step OF
+	        0:  //Close IGV/VVD, then open BOV
+	            "IO Mapping".OUTPUTS."BOV OPEN CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := TRUE;
+	            "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := TRUE;
+	            
+	            IF ("IO Mapping".INPUTS."IGV CLOSED" AND
+	                "IO Mapping".INPUTS."OGV CLOSED") OR
+	                "Vane_Stop_Timer".Q THEN
+	                
+	                "Control".Sequence.Stop_Step := 1;
+	            END_IF;
+	            
+	        1: //Open BOV to reduce pressure
+	            "IO Mapping".OUTPUTS."BOV OPEN CTRL" := TRUE;
+	            "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	            
+	            "Control".Sequence.Stop_Step := 2;
+	            
+	        2:  // Stop Main Motor
+	            "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	            
+	            IF NOT "IO Mapping".INPUTS."SS FB (RUNNING)" OR
+	                "Engineering_Values"."DISH AIR PRESSURE REAL" <= 1.0 THEN
+	                
+	                "Control".Sequence.Stop_Step := 3;
+	            END_IF;
+	            
+	            
+	        3:  // Close BOV
+	            "IO Mapping".OUTPUTS."BOV OPEN CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := TRUE;
+	                "Control".Sequence.Stop_Step := 4;
+	                
+	        4:  // Lubing Timer finished
+	            IF "Post_lube_Timer".Q THEN
+	                "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	                "Control".Sequence.Stop_Step := 5;
+	            END_IF;
+	            
+	        5: // End - Stop Pump, Enter Standby
+	            "Control".System_Status.System_Running := FALSE;
+	            "Control".Sequence.Stop_Step := 0;
+	            "Control".System_Status.Stop_In_Progress := FALSE;
+	            
+	            
+	        ELSE
+	            "Control".Sequence.Stop_Step := 0;
+	    END_CASE;
+	    
+	ELSE
+	    // No active stop sequence
+	    IF "Post_lube_Timer".Q OR
+	        (NOT "Control".Faults.GLOBAL_EMERGENCY_TRIP AND
+	        NOT "Control".Faults.GLOBAL_ALARM_TRIP AND
+	        NOT "Control".System_Status.Stop_In_Progress) THEN
+	        "Control".System_Status.EMG_Stopping := FALSE;
+	        "Control".System_Status.Alarm_Stopping := FALSE;
+	    END_IF;
+	   
+	    "Control".Sequence.Stop_Step := 0;
+	    
+	END_IF;
+	
+	//For HMI
+	"HMI_Interface".Post_Lube_Timer := "Post_lube_Timer".ET / 1000;
+	"HMI_Interface".Stop_Vane_Timer := "Vane_Stop_Timer".ET / 1000;
+END_FUNCTION
+

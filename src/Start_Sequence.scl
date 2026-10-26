@@ -1,0 +1,209 @@
+﻿FUNCTION "Start_Sequence" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	// Exit & Safe State if any trip occurs
+	IF  "Control".Faults.Sequence_Trip          OR
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP  OR
+	    "Control".Faults.GLOBAL_ALARM_TRIP      THEN
+	    
+	    "Control".System_Status.System_Starting := FALSE;
+	    "Control".System_Status.System_Running := FALSE;
+	    "Control".Sequence.Start_Step := 0;
+	    RETURN;
+	END_IF;
+	
+	//Sequence in 7 Steps
+	CASE "Control".Sequence.Start_Step OF
+	    0:  //Step 0: idle, wait for RUN COMMAND
+	        IF "Control".System_Status.System_Ready AND
+	            "Control".CMD.Run_Pulse             THEN
+	            
+	            "Control".System_Status.System_Ready := FALSE;
+	            "Control".System_Status.System_Starting := TRUE;
+	            "Control".Sequence.Start_Step:=1;
+	            "Control".Faults.Sequence_Trip := FALSE;
+	        END_IF;
+	        
+	    1: //Diffuser &IGV self-test
+	        //Close Vanes
+	        "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := "Engineering_Values"."IGV ANGLE REAL" > 5.0;
+	        "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := "Engineering_Values"."VVD ANGLE REAL" > 5.0;
+	        //Scan Time
+	        "Vanes_SEQ".TON(IN := TRUE,
+	                        PT := T#10s);
+	        
+	        IF  "Engineering_Values"."IGV ANGLE REAL" <= 5.0 AND
+	            "Engineering_Values"."VVD ANGLE REAL" <= 5.0 THEN
+	            "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	            //Intialize Timer to prevent error
+	            "Vanes_SEQ".TON(IN := FALSE,
+	                            PT := T#0s);
+	            "Control".Sequence.Start_Step := 2;
+	            
+	        ELSIF "Engineering_Values"."IGV ANGLE REAL" > 5.0 AND
+	              "Engineering_Values"."VVD ANGLE REAL" > 5.0 AND
+	              "Vanes_SEQ".Q THEN
+	              
+	                "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	                "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	                "Control".Faults.Trip_Code :=101; //Vanes Timeout
+	                "Control".Faults.Sequence_Trip := TRUE;
+	            END_IF;
+	        
+	    2:
+	        //Oil Pump
+	        "IO Mapping".OUTPUTS."OIL PUMP CTRL" := TRUE;
+	        
+	        //scan time
+	        "Oil_Pump_SEQ".TON(IN := TRUE,
+	                           PT := T#20s);
+	        
+	        //check if oil pressure reach 1 bar
+	        IF "Engineering_Values"."GB OIL PRESSURE REAL">=1.0 THEN
+	            //Intialize Timer
+	            "Oil_Pump_SEQ".TON(IN := FALSE,
+	                               PT := T#0s);
+	            "Control".Sequence.Start_Step := 3;
+	            
+	        ELSIF "Engineering_Values"."GB OIL PRESSURE REAL"<1.0 AND
+	            "Oil_Pump_SEQ".Q THEN
+	                "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	                "Control".Faults.Trip_Code := 102; //Oil Pump Timeout
+	                "Control".Faults.Sequence_Trip := TRUE;
+	            END_IF;
+	         //For HMI show time
+	        "HMI_Interface".Oil_pump_time := "Oil_Pump_SEQ".ET / 1000;
+	         
+	    3:   //Oil Pressure Scan
+	        //oil pump still on
+	        "IO Mapping".OUTPUTS."OIL PUMP CTRL" := TRUE;
+	        
+	        //timer for prelube with pressure >1 bar
+	        "Pre_Lube_SEQ".TON(IN := TRUE,
+	                           PT := T#10s);////60s
+	        
+	        IF "Engineering_Values"."GB OIL PRESSURE REAL" < 1.0 THEN
+	            "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	            "Control".Faults.Trip_Code := 103;//Oil Pressure didn't keep above 1.0 bar for 1 Minute
+	            "Control".Faults.Sequence_Trip := TRUE;
+	        ELSIF "Pre_Lube_SEQ".Q THEN
+	            "Pre_Lube_SEQ".TON(IN := false,
+	                               PT := T#0s);
+	            "Control".Sequence.Start_Step := 4;
+	        END_IF;
+	          
+	        //HMI Show Time
+	        "HMI_Interface".Pre_lube_Seq_Time := "Pre_Lube_SEQ".ET / 1000;
+	        
+	    4: //Start Main Motor
+	        //open main motor & Keep oil pump
+	        "IO Mapping".OUTPUTS."MAIN CTRL" := TRUE;
+	        
+	        "Start_Motor_SEQ".TON(IN := TRUE,
+	                              PT := T#10s);/////30s
+	        
+	        IF  "IO Mapping".INPUTS."SS FB (RUNNING)" AND
+	            "IO Mapping".INPUTS."SS FB (BYPASS)" THEN
+	            "Start_Motor_SEQ".TON(IN := FALSE,
+	                                  PT := T#0s);
+	            "Control".Sequence.Start_Step := 5;
+	            
+	        ELSIF "IO Mapping".INPUTS."SS FB (FAULT)"=FALSE THEN
+	            
+	            "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	            
+	                "Control".Sequence.Start_Step := 0;
+	                "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	                
+	            ELSIF "Start_Motor_SEQ".Q THEN
+	                "Control".Faults.Trip_Code := 104;//Start Motor Timeout
+	                "IO Mapping".OUTPUTS."MAIN CTRL" := FALSE;
+	                
+	                    "Control".Faults.Sequence_Trip :=TRUE;
+	                END_IF;
+	                
+	        //HMI Show
+	        "HMI_Interface".Motor_Timer := "Start_Motor_SEQ".ET / 1000;
+	        
+	    5: //Close BOV & Open OIV "oil pump still on"
+	        "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := TRUE;
+	        "IO Mapping".OUTPUTS."OIV OPEN CTRL" := TRUE;
+	        
+	        "BOV_Close_SEQ".TON(IN := TRUE,
+	                            PT := T#10s);
+	        
+	        IF "IO Mapping".INPUTS."BOV (CLOSED)"AND
+	            "IO Mapping".INPUTS."OIV (OPENED)" THEN
+	            
+	            "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."OIV OPEN CTRL" := FALSE;
+	            
+	            "BOV_Close_SEQ".TON(IN := FALSE,
+	                                PT := T#0s);
+	            "Control".Sequence.Start_Step := 6;
+	            
+	        ELSIF "BOV_Close_SEQ".Q AND
+	            NOT "IO Mapping".INPUTS."BOV (CLOSED)" AND
+	            NOT "IO Mapping".INPUTS."OIV (OPENED)"  THEN 
+	             
+	            "Control".Faults.Trip_Code := 105;//BOV Closing Timeout
+	            "IO Mapping".OUTPUTS."BOV CLOSE CTRL" := FALSE;
+	            "IO Mapping".OUTPUTS."OIV OPEN CTRL" := FALSE;
+	                "Control".Faults.Sequence_Trip := TRUE;
+	            END_IF;
+	            //HMI Show
+	            "HMI_Interface".BOV_Closing_Timer := "BOV_Close_SEQ".ET / 1000;
+	        
+	        6: //Turn to mechanical oil pump
+	            //timer for 10 sec.
+	        "Switch_Oil_Pumps_SEQ".TON(IN := TRUE,
+	                                   PT := T#10s);
+	        
+	        //1. Turn off electrical oil pump
+	                "IO Mapping".OUTPUTS."OIL PUMP CTRL" := FALSE;
+	                
+	        // 2. Continous pressure check 
+	        IF "Engineering_Values"."GB OIL PRESSURE REAL" < 1.0 THEN
+	           
+	            "Control".Faults.Trip_Code := 106; //Oil Pressure Fell When Switching Pil Pumps
+	            "Control".Faults.Sequence_Trip := TRUE;
+	            
+	        ELSIF "Engineering_Values"."GB OIL PRESSURE REAL" >= 1.0 AND
+	            "Switch_Oil_Pumps_SEQ".Q THEN
+	            "Switch_Oil_Pumps_SEQ".TON(IN := FALSE,
+	                                       PT := T#0s);
+	            "Control".Sequence.Start_Step := 7;
+	        END_IF;
+	        
+	        //HMI SHow time
+	        "HMI_Interface".Switch_Pump_Timer := "Switch_Oil_Pumps_SEQ".ET / 1000;
+	        
+	    7: //Final Step
+	        IF NOT "Control".System_Status.System_Running THEN
+	            "SEQ_Success".TON(IN := TRUE,
+	                              PT := T#10s);//25s
+	        END_IF;
+	        
+	        IF "SEQ_Success".Q AND
+	            "Control".Faults.Sequence_Trip = FALSE THEN
+	            
+	            "SEQ_Success".TON(IN := FALSE,
+	                              PT := T#0s);
+	            
+	            "Control".System_Status.System_Starting := FALSE;
+	            "Control".System_Status.System_Running := TRUE;
+	        END_IF;
+	        //HMI SHow time
+	        "HMI_Interface".SEQ_Success_Time := "SEQ_Success".ET / 1000;
+	        
+	    ELSE //else for "CASE" function
+	     
+	        // Reset sequence to idle
+	        "Control".Faults.Sequence_Trip := TRUE;
+	        
+	END_CASE;
+END_FUNCTION
+

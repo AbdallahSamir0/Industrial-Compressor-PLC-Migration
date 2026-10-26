@@ -1,0 +1,43 @@
+﻿FUNCTION "Run_Phase" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+BEGIN
+	//Pressure SP (0 - 1.65) trip at 1.713 but alarm limit is safer
+	"Control".Pressure_Values.CL_PRESSURE_SP := LIMIT(MN := 0.0,
+	                                                  IN := "Control".Pressure_Values.Pressure_SP,
+	                                                  MX := 1.65);
+	
+	//Calculate Difference of Pressure Values
+	"Control".Run_Control.Pressure_Error := "Control".Pressure_Values.CL_PRESSURE_SP - "Engineering_Values"."DISH AIR PRESSURE REAL";
+	
+	//Stuck commands for IGV & VVD
+	"Control".Run_Control.Stuck_Diffussers :=
+	("IO Mapping".OUTPUTS."IGV OPEN CTRL" AND NOT "IO Mapping".INPUTS.IGV_OPENED) OR
+	("IO Mapping".OUTPUTS."IGV CLOSE CTRL" AND NOT "IO Mapping".INPUTS."IGV CLOSED") OR
+	("IO Mapping".OUTPUTS."VVD OPEN CTRL" AND NOT "IO Mapping".INPUTS."OGV OPENED") OR
+	("IO Mapping".OUTPUTS."VVD CLOSE CTRL" AND NOT "IO Mapping".INPUTS."OGV CLOSED");
+	
+	"IGV&VVD_Travel_Time".TON(IN := "Control".Run_Control.Stuck_Diffussers,
+	                          PT := T#30s);
+	
+	IF "IGV&VVD_Travel_Time".Q THEN
+	    "IO Mapping".OUTPUTS."IGV OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."IGV CLOSE CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD OPEN CTRL" := FALSE;
+	    "IO Mapping".OUTPUTS."VVD CLOSE CTRL" := FALSE;
+	    
+	    "HMI_Interface".Trip_Code_int.%X6 := TRUE;
+	    "Control".Faults.GLOBAL_EMERGENCY_TRIP := TRUE;
+	ELSE
+	    "IGV&VVD_Travel_Time".TON(IN := FALSE,
+	                              PT := T#0s);
+	END_IF;
+	
+	//For HMI
+	"IO Mapping".OUTPUTS."IGV OPENED RLY" := "IO Mapping".INPUTS.IGV_OPENED;
+	"IO Mapping".OUTPUTS."IGV CLOSED RLY" := "IO Mapping".INPUTS."IGV CLOSED";
+	"IO Mapping".OUTPUTS."VVD OPENED RLY" := "IO Mapping".INPUTS."OGV OPENED";
+	"IO Mapping".OUTPUTS."VVD CLOSED RLY" := "IO Mapping".INPUTS."OGV CLOSED";
+END_FUNCTION
+

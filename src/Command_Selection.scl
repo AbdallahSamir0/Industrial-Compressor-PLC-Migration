@@ -1,0 +1,94 @@
+﻿FUNCTION "Command_Selection" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_TEMP 
+      Raw_Run : Bool;
+      Raw_Ready : Bool;
+      Raw_Stop : Bool;
+      Reset : Bool;
+   END_VAR
+
+
+BEGIN
+	// Select The mode Depends on L/R SWITCH
+	"HMI_Interface".Local_Mode := "IO Mapping".INPUTS."L\R SWITCH";
+	
+	//set RUN & READY Commands Depends on the state
+	
+	//Local mode (Physical Buttons)
+	IF "HMI_Interface".Local_Mode THEN
+	    #Raw_Run := "IO Mapping".INPUTS."RUN PB";
+	    #Raw_Ready := "IO Mapping".INPUTS."RDY PB";
+	    
+	ELSE   //Remote mode (HMI Buttons)
+	    #Raw_Run :="HMI_Interface".Run_CMD;
+	    #Raw_Ready :="HMI_Interface".Ready_CMD;
+	END_IF;
+	
+	//Generate Stop Command Active in ALL Modes
+	#Raw_Stop := NOT "IO Mapping".INPUTS."STOP PB" OR
+	"HMI_Interface".Stop_CMD;
+	
+	//Reset in HMI in both cases (there is no Physical PB)
+	#Reset := "HMI_Interface".Reset_CMD;
+	
+	//   ------------------------------------------------------------------------------------------------------
+	// To reject resetting we need to use pulse trigger for all pulses
+	//Ready Pulse
+	"Control".CMD.Ready_Pulse := #Raw_Ready AND
+	                           NOT #Raw_Run AND
+	                           NOT #Raw_Stop AND
+	                           NOT #Reset AND 
+	                           NOT "Control".Edge.Ready_Last;
+	                           
+	//make sure it's not a loop                        
+	"Control".Edge.Ready_Last := #Raw_Ready;
+	
+	// Run Pulse
+	"Control".CMD.Run_Pulse := #Raw_Run AND
+	                        NOT #Raw_Ready AND
+	                        NOT #Raw_Stop AND
+	                        NOT #Reset AND
+	                        NOT "Control".Edge.Run_Last;
+	                             
+	//make sure it's not a loop                      
+	"Control".Edge.Run_Last := #Raw_Run;
+	
+	//Stop Pulse
+	"Control".CMD.Stop_Pulse := #Raw_Stop AND
+	                        NOT #Raw_Ready AND
+	                        NOT #Raw_Run AND
+	                        NOT #Reset AND
+	                        NOT "Control".Edge.Stop_Last;
+	                        
+	//make sure it's not a loop
+	"Control".Edge.Stop_Last := #Raw_Stop;
+	
+	//Reset Pulse
+	"Control".CMD.Reset_Pulse := #Reset AND
+	                        NOT #Raw_Ready AND
+	                        NOT #Raw_Run AND
+	                        NOT #Raw_Stop AND
+	                        NOT "Control".Edge.Reset_Last;
+	                        
+	//make sure it's not a loop
+	"Control".Edge.Reset_Last := #Reset;
+	//   ------------------------------------------------------------------------------------------------------
+	//Reset HMI Pulse
+	IF "Control".CMD.Run_Pulse THEN
+	    "HMI_Interface".Run_CMD := FALSE;
+	END_IF;
+	
+	IF "Control".CMD.Ready_Pulse THEN
+	    "HMI_Interface".Ready_CMD := FALSE;
+	END_IF;
+	
+	IF "Control".CMD.Stop_Pulse THEN
+	    "HMI_Interface".Stop_CMD := FALSE;
+	END_IF;
+	
+	IF "Control".CMD.Reset_Pulse THEN
+	    "HMI_Interface".Reset_CMD := FALSE;
+	END_IF;
+END_FUNCTION
+
